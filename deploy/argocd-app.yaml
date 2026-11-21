@@ -10,7 +10,7 @@ spec:
     targetRevision: deploy
     path: overlays/prod
   destination:
-    server: osa-cluster
+    name: osa-cluster
     namespace: dn42-autopeer
   syncPolicy:
     automated:
