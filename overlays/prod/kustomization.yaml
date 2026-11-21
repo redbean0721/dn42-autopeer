@@ -7,6 +7,6 @@ resources:
   - ingress.yaml
 images:
   - name: ghcr.io/redbean0721/dn42-autopeer-backend
-    newTag: 014737526008e4815b21acba9ff76be3fbb34708
+    newTag: 88fefe692f33ace1c5ea302b02d572bd32871c59
   - name: ghcr.io/redbean0721/dn42-autopeer-frontend
-    newTag: 014737526008e4815b21acba9ff76be3fbb34708
+    newTag: 88fefe692f33ace1c5ea302b02d572bd32871c59
