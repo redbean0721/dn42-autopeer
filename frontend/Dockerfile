@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-slim AS build
+FROM node:26-slim AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /app
@@ -8,7 +8,7 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache \
     yarn install --immutable
 RUN yarn build
 
-FROM node:24-slim
+FROM node:26-slim
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000
