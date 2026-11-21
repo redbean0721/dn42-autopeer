@@ -10,7 +10,7 @@ spec:
     targetRevision: deploy
     path: overlays/prod
   destination:
-    server: https://kubernetes.default.svc
+    server: osa-cluster
     namespace: dn42-autopeer
   syncPolicy:
     automated:

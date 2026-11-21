@@ -14,6 +14,6 @@ ENV NODE_ENV=production \
     PORT=3000
 WORKDIR /app
 COPY --from=build --chown=node:node /app/.output ./.output
-USER node
+USER 1000
 EXPOSE 3000
 CMD ["node", ".output/server/index.mjs"]
