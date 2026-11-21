@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dn42-autopeer
+resources:
+  - ../../base
+  - middleware.yaml
+  - ingress.yaml
+images:
+  - name: ghcr.io/redbean0721/dn42-autopeer-backend
+    newTag: main
+  - name: ghcr.io/redbean0721/dn42-autopeer-frontend
+    newTag: main

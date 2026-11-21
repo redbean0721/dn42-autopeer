@@ -1,0 +1,162 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "deploy/**"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-main
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/redbean0721/dn42-autopeer
+
+jobs:
+  image:
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        component: [backend, frontend]
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component }}
+          platforms: ${{ matrix.platform }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}-${{ matrix.component }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}-${{ matrix.arch }}
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          retention-days: 1
+
+  merge:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    env:
+      IMAGE: ghcr.io/redbean0721/dn42-autopeer-${{ matrix.component }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.component }}-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$GITHUB_SHA" \
+            -t "$IMAGE:main" \
+            $(printf "$IMAGE@sha256:%s " *)
+
+      - name: Inspect
+        run: docker buildx imagetools inspect "$IMAGE:$GITHUB_SHA"
+
+  deploy:
+    needs: merge
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: src
+      - uses: actions/checkout@v7
+        with:
+          ref: deploy
+          path: out
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          workdir: out
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          git_committer_name: "Redbean0721 Deploy Bot"
+          git_committer_email: "deploy@redbean0721.com"
+
+      - name: Sync manifests and set image tags
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          rsync -a --delete --exclude .git src/deploy/ out/
+          cd out/overlays/prod
+          for c in backend frontend; do
+            NAME="${IMAGE_PREFIX}-${c}" yq -i \
+              '(.images[] | select(.name == strenv(NAME)) | .newTag) = strenv(SHA)' \
+              kustomization.yaml
+          done
+
+      - name: Validate
+        run: kubectl kustomize out/overlays/prod > /dev/null
+
+      - name: Commit and push
+        working-directory: out
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "deploy branch already up to date"
+            exit 0
+          fi
+          COMMIT_SUBJECT="${COMMIT_MESSAGE%%$'\n'*}"
+          COMMIT_SUBJECT="${COMMIT_SUBJECT:-manual run}"
+          git commit -S -m "deploy: $COMMIT_SUBJECT" -m "Update images to ${GITHUB_SHA}"
+          git pull --rebase origin deploy
+          git push origin deploy
