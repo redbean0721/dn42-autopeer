@@ -40,7 +40,7 @@ class SyncWorker:
         self._status = Status()
         self._trigger = threading.Event()
         self._stop = threading.Event()
-        self._last_trigger = 0.0
+        self._last_trigger = float("-inf")
         self._heartbeat = time.monotonic()
         self._imports = 0
         self._schema_ready = False

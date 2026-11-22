@@ -134,3 +134,12 @@ def test_logs_up_to_date_once_per_process(
     assert messages == [
         f"registry up to date at {git(remote_repo, 'rev-parse', 'HEAD')[:12]} (11 objects)"
     ]
+
+
+def test_first_sync_request_is_accepted_right_after_boot(
+    tmp_path: Path, remote_repo: Path, db_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("registry_sync.worker.time.monotonic", lambda: 5.0)
+    worker = make_worker(tmp_path, remote_repo, db_url, trigger_cooldown=60)
+    assert worker.request_sync() == 0.0
+    assert worker.request_sync() == 60.0
