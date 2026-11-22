@@ -17,3 +17,22 @@ spec:
       owner: autopeer
       localeProvider: builtin
       builtinLocale: C.UTF-8
+  managed:
+    roles:
+      - name: registry_sync
+        login: true
+        passwordSecret:
+          name: postgres-registry-sync
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: autopeer
+spec:
+  cluster:
+    name: postgres
+  name: autopeer
+  owner: autopeer
+  schemas:
+    - name: registry
+      owner: registry_sync
