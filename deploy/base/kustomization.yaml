@@ -4,6 +4,7 @@ resources:
   - postgres.yaml
   - backend.yaml
   - frontend.yaml
+  - registry-sync.yaml
 labels:
   - pairs:
       app.kubernetes.io/part-of: dn42-autopeer
