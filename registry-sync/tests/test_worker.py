@@ -1,4 +1,5 @@
 import json
+import logging
 import threading
 import urllib.error
 import urllib.request
@@ -118,3 +119,18 @@ def test_recovers_after_schema_is_recreated(
     assert not worker.run_once()
     assert worker.run_once()
     assert worker.status()["object_count"] == 11
+
+
+def test_logs_up_to_date_once_per_process(
+    tmp_path: Path, remote_repo: Path, db_url: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    make_worker(tmp_path, remote_repo, db_url).run_once()
+
+    caplog.set_level(logging.INFO, logger="registry_sync.worker")
+    worker = make_worker(tmp_path, remote_repo, db_url)
+    assert worker.run_once()
+    assert worker.run_once()
+    messages = [r.getMessage() for r in caplog.records if "up to date" in r.getMessage()]
+    assert messages == [
+        f"registry up to date at {git(remote_repo, 'rev-parse', 'HEAD')[:12]} (11 objects)"
+    ]

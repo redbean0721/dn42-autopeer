@@ -44,6 +44,7 @@ class SyncWorker:
         self._heartbeat = time.monotonic()
         self._imports = 0
         self._schema_ready = False
+        self._reported = False
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -97,7 +98,12 @@ class SyncWorker:
             state = db.get_state(conn)
             if state.commit == rev.commit:
                 db.touch(conn)
-                log.debug("registry unchanged at %s", rev.commit[:12])
+                log.log(
+                    logging.DEBUG if self._reported else logging.INFO,
+                    "registry up to date at %s (%d objects)",
+                    rev.commit[:12],
+                    state.object_count,
+                )
             else:
                 self.repo.checkout(rev.commit)
                 started = time.monotonic()
@@ -120,6 +126,7 @@ class SyncWorker:
                 if self._imports % self.settings.gc_every == 0:
                     self.repo.gc()
             state = db.get_state(conn)
+        self._reported = True
         with self._lock:
             self._status.commit = state.commit
             self._status.commit_time = state.commit_time
