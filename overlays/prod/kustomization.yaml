@@ -11,4 +11,4 @@ images:
   - name: ghcr.io/redbean0721/dn42-autopeer-frontend
     newTag: 41c83d5eb5792c6ab4c62460540115563c7a200a
   - name: ghcr.io/redbean0721/dn42-autopeer-registry-sync
-    newTag: 41c83d5eb5792c6ab4c62460540115563c7a200a
+    newTag: 7d32b223aed6c90bc3241b520b6514725f4332be
