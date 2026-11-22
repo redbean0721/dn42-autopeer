@@ -6,12 +6,14 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
+      - "registry-sync/**"
       - "deploy/**"
       - ".github/workflows/build.yml"
   pull_request:
     paths:
       - "backend/**"
       - "frontend/**"
+      - "registry-sync/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
@@ -25,7 +27,7 @@ concurrency:
 env:
   IMAGE_PREFIX: ghcr.io/redbean0721/dn42-autopeer
   IS_PR: ${{ github.event_name == 'pull_request' }}
-  COMPONENTS: '["backend", "frontend"]'
+  COMPONENTS: '["backend", "frontend", "registry-sync"]'
 
 jobs:
   changes:

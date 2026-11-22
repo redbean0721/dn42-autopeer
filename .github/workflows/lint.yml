@@ -27,4 +27,4 @@ jobs:
 
       - run: uvx pre-commit run --all-files --show-diff-on-failure
         env:
-          SKIP: ruff-check,ruff-format,cargo-fmt
+          SKIP: ruff-check,ruff-format,ruff-check-registry-sync,ruff-format-registry-sync,cargo-fmt

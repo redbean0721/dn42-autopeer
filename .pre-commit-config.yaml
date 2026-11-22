@@ -27,6 +27,20 @@ repos:
         files: ^backend/.*\.py$
         pass_filenames: false
 
+      - id: ruff-check-registry-sync
+        name: ruff check (registry-sync)
+        entry: uv run --directory registry-sync ruff check --fix .
+        language: system
+        files: ^registry-sync/.*\.py$
+        pass_filenames: false
+
+      - id: ruff-format-registry-sync
+        name: ruff format (registry-sync)
+        entry: uv run --directory registry-sync ruff format .
+        language: system
+        files: ^registry-sync/.*\.py$
+        pass_filenames: false
+
       - id: cargo-fmt
         name: cargo fmt (agent)
         entry: cargo fmt --manifest-path agent/Cargo.toml
