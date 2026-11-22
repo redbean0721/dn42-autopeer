@@ -25,9 +25,40 @@ concurrency:
 env:
   IMAGE_PREFIX: ghcr.io/redbean0721/dn42-autopeer
   IS_PR: ${{ github.event_name == 'pull_request' }}
+  COMPONENTS: '["backend", "frontend"]'
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      components: ${{ steps.detect.outputs.components }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            result="$COMPONENTS"
+          else
+            changed="$(git diff --name-only "$BASE" HEAD)"
+            if grep -qx '.github/workflows/build.yml' <<< "$changed"; then
+              result="$COMPONENTS"
+            else
+              result="$(jq -c --arg changed "$changed" \
+                'map(. as $c | select($changed | split("\n") | any(startswith($c + "/"))))' \
+                <<< "$COMPONENTS")"
+            fi
+          fi
+          echo "components=$result" | tee -a "$GITHUB_OUTPUT"
+
   image:
+    needs: changes
+    if: needs.changes.outputs.components != '[]'
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -35,7 +66,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        component: [backend, frontend]
+        component: ${{ fromJSON(needs.changes.outputs.components) }}
         platform: [linux/amd64, linux/arm64]
         include:
           - platform: linux/amd64
@@ -80,7 +111,7 @@ jobs:
           retention-days: 1
 
   merge:
-    needs: image
+    needs: [changes, image]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -88,7 +119,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        component: [backend, frontend]
+        component: ${{ fromJSON(needs.changes.outputs.components) }}
     env:
       IMAGE: ghcr.io/redbean0721/dn42-autopeer-${{ matrix.component }}
     steps:
@@ -116,8 +147,11 @@ jobs:
         run: docker buildx imagetools inspect "$IMAGE:$GITHUB_SHA"
 
   deploy:
-    needs: merge
-    if: github.event_name != 'pull_request'
+    needs: [changes, merge]
+    if: >-
+      always() && github.event_name != 'pull_request'
+      && needs.changes.result == 'success'
+      && (needs.merge.result == 'success' || needs.merge.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -144,13 +178,32 @@ jobs:
       - name: Sync manifests and set image tags
         env:
           SHA: ${{ github.sha }}
+          BUILT: ${{ needs.changes.outputs.components }}
+          KUSTOMIZATION: out/overlays/prod/kustomization.yaml
         run: |
+          get_tag() {
+            [ -f "$KUSTOMIZATION" ] || return 0
+            NAME="$1" yq '.images[] | select(.name == strenv(NAME)) | .newTag' "$KUSTOMIZATION"
+          }
+
+          declare -A previous
+          for c in $(jq -r '.[]' <<< "$COMPONENTS"); do
+            previous[$c]="$(get_tag "${IMAGE_PREFIX}-${c}")"
+          done
+
           rsync -a --delete --exclude .git src/deploy/ out/
-          cd out/overlays/prod
-          for c in backend frontend; do
-            NAME="${IMAGE_PREFIX}-${c}" yq -i \
-              '(.images[] | select(.name == strenv(NAME)) | .newTag) = strenv(SHA)' \
-              kustomization.yaml
+
+          for c in "${!previous[@]}"; do
+            if jq -e --arg c "$c" 'index($c) != null' <<< "$BUILT" > /dev/null; then
+              tag="$SHA"
+            else
+              tag="${previous[$c]}"
+            fi
+            [ -n "$tag" ] || continue
+            echo "${c}: ${tag}"
+            NAME="${IMAGE_PREFIX}-${c}" TAG="$tag" yq -i \
+              '(.images[] | select(.name == strenv(NAME)) | .newTag) = strenv(TAG)' \
+              "$KUSTOMIZATION"
           done
 
       - name: Validate
@@ -160,6 +213,7 @@ jobs:
         working-directory: out
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          BUILT: ${{ needs.changes.outputs.components }}
         run: |
           git add -A
           if git diff --cached --quiet; then
@@ -168,6 +222,11 @@ jobs:
           fi
           COMMIT_SUBJECT="${COMMIT_MESSAGE%%$'\n'*}"
           COMMIT_SUBJECT="${COMMIT_SUBJECT:-manual run}"
-          git commit -S -m "deploy: $COMMIT_SUBJECT" -m "Update images to ${GITHUB_SHA}"
+          if [ "$BUILT" = "[]" ]; then
+            DETAIL="Manifests only, images unchanged (${GITHUB_SHA})"
+          else
+            DETAIL="Update $(jq -r 'join(", ")' <<< "$BUILT") to ${GITHUB_SHA}"
+          fi
+          git commit -S -m "deploy: $COMMIT_SUBJECT" -m "$DETAIL"
           git pull --rebase origin deploy
           git push origin deploy
