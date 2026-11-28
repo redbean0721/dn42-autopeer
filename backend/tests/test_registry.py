@@ -1,11 +1,10 @@
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import Engine
 
-from app.registry.tables import aut_num, metadata, object_
+from app.registry.tables import aut_num, object_
 
 AUT_NUMS: list[tuple[int, str | None, list[str]]] = [
     (424242999, "AS424242999", ["AS424242999-MNT"]),
@@ -18,12 +17,8 @@ AUT_NUMS: list[tuple[int, str | None, list[str]]] = [
 
 
 @pytest.fixture
-def registry_data(db_url: str) -> Iterator[None]:
-    engine = create_engine(db_url.replace("postgresql://", "postgresql+psycopg://", 1))
-    with engine.begin() as conn:
-        conn.execute(text("DROP SCHEMA IF EXISTS registry CASCADE"))
-        conn.execute(text("CREATE SCHEMA registry"))
-        metadata.create_all(conn)
+def registry_data(registry_db: Engine) -> None:
+    with registry_db.begin() as conn:
         conn.execute(
             aut_num.insert(),
             [{"asn": asn, "key": f"AS{asn}", "as_name": name} for asn, name, _ in AUT_NUMS],
@@ -35,10 +30,6 @@ def registry_data(db_url: str) -> Iterator[None]:
                 for asn, _, mnts in AUT_NUMS
             ],
         )
-    yield
-    with engine.begin() as conn:
-        conn.execute(text("DROP SCHEMA registry CASCADE"))
-    engine.dispose()
 
 
 def search(client: TestClient, **params: Any) -> list[dict[str, Any]]:

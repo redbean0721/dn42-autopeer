@@ -3,8 +3,10 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, create_engine, text
 
 from app.main import app
+from app.registry.tables import metadata
 
 
 @pytest.fixture
@@ -26,3 +28,16 @@ def db_client(db_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setenv("DATABASE_URL", db_url)
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def registry_db(db_url: str) -> Iterator[Engine]:
+    engine = create_engine(db_url.replace("postgresql://", "postgresql+psycopg://", 1))
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS registry CASCADE"))
+        conn.execute(text("CREATE SCHEMA registry"))
+        metadata.create_all(conn)
+    yield engine
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA registry CASCADE"))
+    engine.dispose()
