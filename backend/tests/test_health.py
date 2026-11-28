@@ -2,7 +2,7 @@ import logging
 
 from fastapi.testclient import TestClient
 
-from app.main import _HealthzAccessFilter, app
+from app.main import _ProbeAccessFilter, app
 
 client = TestClient(app)
 
@@ -25,8 +25,9 @@ def _access_record(path: str) -> logging.LogRecord:
     )
 
 
-def test_healthz_access_log_is_filtered() -> None:
-    f = _HealthzAccessFilter()
+def test_probe_access_log_is_filtered() -> None:
+    f = _ProbeAccessFilter()
     assert f.filter(_access_record("/healthz")) is False
     assert f.filter(_access_record("/healthz?probe=1")) is False
+    assert f.filter(_access_record("/readyz")) is False
     assert f.filter(_access_record("/api/peers")) is True
