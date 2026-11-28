@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app import db
+from app.api.public import registry
 from app.config import Settings
 
 PROBE_PATHS = {"/healthz", "/readyz"}
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(registry.router, prefix="/api")
 
 
 @app.get("/healthz")
